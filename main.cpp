@@ -62,6 +62,7 @@ class HelloTriangleApplication {
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
     }
 
@@ -85,14 +86,18 @@ class HelloTriangleApplication {
     QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device) {
         QueueFamilyIndicies indicies;
         uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+        vkGetPhysicalDeviceQueueFamilyProperties2(device, &queueFamilyCount, nullptr);
 
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+        std::vector<VkQueueFamilyProperties2> queueFamilies(queueFamilyCount);
+        for (auto& queueFamily : queueFamilies) {
+            queueFamily.sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+            queueFamily.pNext = nullptr;
+        }
+        vkGetPhysicalDeviceQueueFamilyProperties2(device, &queueFamilyCount, queueFamilies.data());
 
         int i = 0;
         for (const auto& queueFamilie : queueFamilies) {
-            if (queueFamilie.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            if (queueFamilie.queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 indicies.graphicsFamily = i;
             }
             if (indicies.isComplete()) {
