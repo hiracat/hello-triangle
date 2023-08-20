@@ -62,7 +62,6 @@ class HelloTriangleApplication {
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
     }
 
@@ -86,14 +85,14 @@ class HelloTriangleApplication {
     QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device) {
         QueueFamilyIndicies indicies;
         uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties2(device, &queueFamilyCount, nullptr);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
-        std::vector<VkQueueFamilyProperties2> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties2(device, &queueFamilyCount, queueFamilies.data());
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
         int i = 0;
         for (const auto& queueFamilie : queueFamilies) {
-            if (queueFamilie.queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            if (queueFamilie.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 indicies.graphicsFamily = i;
             }
             if (indicies.isComplete()) {
@@ -107,6 +106,12 @@ class HelloTriangleApplication {
     int rateDeviceSuitabality(VkPhysicalDevice device) {
         VkPhysicalDeviceProperties2 deviceProperties;
         VkPhysicalDeviceFeatures2 deviceFeatures;
+        deviceFeatures.pNext = nullptr;
+        deviceProperties.pNext = nullptr;
+
+        deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        deviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+
         vkGetPhysicalDeviceProperties2(device, &deviceProperties);
         vkGetPhysicalDeviceFeatures2(device, &deviceFeatures);
         int score = 0;
