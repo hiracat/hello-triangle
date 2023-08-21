@@ -1,16 +1,16 @@
-#include <optional>
+#include <set>
+#include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <map>
+#include <optional>
 #include <stdexcept>
 #include <vector>
-
-#include <cstring>
-#include <map>
-#include <vulkan/vulkan_core.h>
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -51,11 +51,23 @@ class HelloTriangleApplication {
     }
 
   private:
+    GLFWwindow* window{};
+
+    VkInstance instance{};
+    VkDebugUtilsMessengerEXT debugMessenger{};
+
+    VkSurfaceKHR surface{};
+
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    GLFWwindow* window;
-    VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
+    VkDevice device{};
+    VkQueue graphicsQueue{};
+
     const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"};
+
+    VkPhysicalDeviceProperties deviceProperties{};
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkQueue presentQueue{};
 
     void initWindow() {
         glfwInit();
@@ -73,54 +85,32 @@ class HelloTriangleApplication {
         }
         createInstance();
         setupDebugMessager();
+        createSurface();
         pickPhysicalDevice();
+        createLogicalDevice();
+    }
+    void createSurface() {
+
+        if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create window surface");
+        }
     }
 
     struct QueueFamilyIndicies {
         std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
+
         bool isComplete() {
-            return graphicsFamily.has_value();
+            return graphicsFamily.has_value() && presentFamily.has_value();
         }
     };
-
-    QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device) {
-        QueueFamilyIndicies indicies;
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties2(device, &queueFamilyCount, nullptr);
-
-        std::vector<VkQueueFamilyProperties2> queueFamilies(queueFamilyCount);
-        for (auto& queueFamily : queueFamilies) {
-            queueFamily.sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
-            queueFamily.pNext = nullptr;
-        }
-        vkGetPhysicalDeviceQueueFamilyProperties2(device, &queueFamilyCount, queueFamilies.data());
-
-        int i = 0;
-        for (const auto& queueFamilie : queueFamilies) {
-            if (queueFamilie.queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indicies.graphicsFamily = i;
-            }
-            if (indicies.isComplete()) {
-                break;
-            }
-            i++;
-        }
-        return indicies;
-    }
-
     int rateDeviceSuitabality(VkPhysicalDevice device) {
-        VkPhysicalDeviceProperties2 deviceProperties;
-        VkPhysicalDeviceFeatures2 deviceFeatures;
-        deviceFeatures.pNext = nullptr;
-        deviceProperties.pNext = nullptr;
 
-        deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        deviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        vkGetPhysicalDeviceProperties(device, &deviceProperties);
+        vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-        vkGetPhysicalDeviceProperties2(device, &deviceProperties);
-        vkGetPhysicalDeviceFeatures2(device, &deviceFeatures);
         int score = 0;
-        if (deviceProperties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             score += 1000;
         }
 
@@ -137,6 +127,75 @@ class HelloTriangleApplication {
         return score;
     }
 
+    void createLogicalDevice() {
+        QueueFamilyIndicies indices = findQueueFamilies(physicalDevice);
+
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+        std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+
+        // influinces the scheduling of command buffers
+        float queuePriority = 1;
+        for (uint32_t queueFamily : uniqueQueueFamilies) {
+            VkDeviceQueueCreateInfo queueCreateInfo{};
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+            queueCreateInfo.queueCount = 1;
+            queueCreateInfo.pQueuePriorities = &queuePriority;
+            queueCreateInfos.push_back(queueCreateInfo);
+        }
+
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        createInfo.enabledExtensionCount = 0;
+
+        if (enableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+            createInfo.ppEnabledLayerNames = validationLayers.data();
+        } else {
+            createInfo.enabledLayerCount = 0;
+        }
+
+        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create logical device");
+        }
+        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+        vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+    }
+
+    // finds all of the available supported queue families for the device
+    QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device) {
+        QueueFamilyIndicies indicies{};
+        uint32_t queueFamilyCount = 0;
+        VkBool32 presentSupport;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+        int i = 0;
+        // TODO: add logic to make the device selector prefer a device with presentation and drawing in the same queue
+        for (const auto& queueFamilie : queueFamilies) {
+            if (queueFamilie.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indicies.graphicsFamily = i;
+            }
+            if (indicies.isComplete()) {
+                break;
+            }
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+            if (presentSupport) {
+                indicies.presentFamily = i;
+            }
+            i++;
+        }
+        return indicies;
+    }
+
     void pickPhysicalDevice() {
         uint32_t deviceCount = 0;
         vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
@@ -147,7 +206,7 @@ class HelloTriangleApplication {
 
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-        std::multimap<int, VkPhysicalDevice> candidates;
+        std::multimap<int, VkPhysicalDevice> candidates{};
         for (const auto& device : devices) {
             int score = rateDeviceSuitabality(device);
             candidates.insert(std::make_pair(score, device));
@@ -255,7 +314,7 @@ class HelloTriangleApplication {
         createInfo.enabledExtensionCount = glfwExtentionCount;
         createInfo.ppEnabledExtensionNames = glfwExtentions;
 
-        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
+        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
         if (enableValidationLayers) {
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -297,7 +356,8 @@ class HelloTriangleApplication {
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
-
+        vkDestroyDevice(device, nullptr);
+        vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
         glfwDestroyWindow(window);
         glfwTerminate();
