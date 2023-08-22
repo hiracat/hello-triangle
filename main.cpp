@@ -103,6 +103,8 @@ class HelloTriangleApplication {
         std::cout << "picked physical device" << std::endl;
         createLogicalDevice();
         std::cout << "created logical device" << std::endl;
+        createSwapChain();
+        std::cout << "created swapchain " << swapChain << std::endl;
     }
     void createSwapChain() {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
@@ -150,7 +152,7 @@ class HelloTriangleApplication {
         // this says that we dont care about pixels not visable, if you want to read them then set this to false
         createInfo.clipped = VK_TRUE;
         createInfo.oldSwapchain = VK_NULL_HANDLE;
-        if (!vkCreateSwapchainKHR(logicalDevice, &createInfo, nullptr, &swapChain)) {
+        if (vkCreateSwapchainKHR(logicalDevice, &createInfo, nullptr, &swapChain)) {
             throw std::runtime_error("failed to create swapchain");
         }
         // get the swapchain handles
@@ -249,7 +251,7 @@ class HelloTriangleApplication {
         return VK_PRESENT_MODE_FIFO_KHR;
     }
     VkExtent2D choseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-        if (capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max()) {
+        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
             return capabilities.currentExtent;
         } else {
             int width, height;
