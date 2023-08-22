@@ -54,6 +54,7 @@ class HelloTriangleApplication {
     }
 
   private:
+    // class member variables
     GLFWwindow* window{};
 
     VkInstance instance{};
@@ -62,7 +63,7 @@ class HelloTriangleApplication {
     VkSurfaceKHR surface{};
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device{};
+    VkDevice logicalDevice{};
     VkQueue graphicsQueue{};
     VkSwapchainKHR swapChain{};
 
@@ -73,6 +74,10 @@ class HelloTriangleApplication {
     VkPhysicalDeviceFeatures deviceFeatures{};
 
     VkQueue presentQueue{};
+
+    std::vector<VkImage> swapChainImages; // these images are automatically cleaned by the swapchain
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
 
     void initWindow() {
         glfwInit();
@@ -145,9 +150,15 @@ class HelloTriangleApplication {
         // this says that we dont care about pixels not visable, if you want to read them then set this to false
         createInfo.clipped = VK_TRUE;
         createInfo.oldSwapchain = VK_NULL_HANDLE;
-        if (!vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain)) {
+        if (!vkCreateSwapchainKHR(logicalDevice, &createInfo, nullptr, &swapChain)) {
             throw std::runtime_error("failed to create swapchain");
         }
+        // get the swapchain handles
+        vkGetSwapchainImagesKHR(logicalDevice, swapChain, &imageCount, nullptr);
+        swapChainImages.resize(imageCount);
+        vkGetSwapchainImagesKHR(logicalDevice, swapChain, &imageCount, swapChainImages.data());
+        swapChainImageFormat = surfaceFormat.format;
+        swapChainExtent = extent;
     }
     void createSurface() {
 
@@ -191,21 +202,16 @@ class HelloTriangleApplication {
     }
 
     int rateDeviceSuitabality(VkPhysicalDevice device) {
-        std::cout << "*********start score printout**********" << std::endl;
 
         vkGetPhysicalDeviceProperties(device, &deviceProperties);
         vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
         int score = 0;
-        std::cout << score << std::endl;
         bool swapChainAdequate = false;
         if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             score += 1000;
         }
-        std::cout << score << std::endl;
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-        std::cout << score << std::endl;
         swapChainAdequate = !swapChainSupport.presentModes.empty() && !swapChainSupport.formats.empty();
-        std::cout << score << std::endl;
 
         // example of something that you could do, this is fully working so use it if you need
         // score += deviceProperties.properties.limits.maxImageDimension2D;
@@ -214,17 +220,13 @@ class HelloTriangleApplication {
         //     return 0;
         // }
         QueueFamilyIndicies indicies = findQueueFamilies(device);
-        std::cout << score << std::endl;
         if (!indicies.isComplete()) {
-        std::cout << "indicies is not complete" << std::endl;
             return 0;
         }
         if (!checkDeviceExtensionSupport(device)) {
-        std::cout << "does not support Extensions" << std::endl;
             return 0;
         }
         if (!swapChainAdequate) {
-        std::cout << "swapchain is not adequate" << std::endl;
             return 0;
         }
         return score;
@@ -315,11 +317,11 @@ class HelloTriangleApplication {
             createInfo.enabledLayerCount = 0;
         }
 
-        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS) {
             throw std::runtime_error("failed to create logical device");
         }
-        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-        vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+        vkGetDeviceQueue(logicalDevice, indices.graphicsFamily.value(), 0, &graphicsQueue);
+        vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
     }
 
     // finds all of the available supported queue families for the device
@@ -356,7 +358,6 @@ class HelloTriangleApplication {
         if (deviceCount == 0) {
             throw std::runtime_error("no devices with vulkan support available");
         }
-        std::cout << "number of physical devices available: " << deviceCount << std::endl;
         std::vector<VkPhysicalDevice> devices(deviceCount);
 
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
@@ -365,7 +366,6 @@ class HelloTriangleApplication {
 
         for (const auto& device : devices) {
             int score = rateDeviceSuitabality(device);
-            std::cout << "****************the score of the device is: " << score << "**************" << std::endl;
             candidates.insert(std::make_pair(score, device));
         }
         if (candidates.rbegin()->first > 0) {
@@ -513,8 +513,8 @@ class HelloTriangleApplication {
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
-        vkDestroyDevice(device, nullptr);
+        vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
+        vkDestroyDevice(logicalDevice, nullptr);
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
         glfwDestroyWindow(window);
