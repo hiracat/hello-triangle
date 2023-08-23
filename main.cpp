@@ -1,4 +1,6 @@
+#include <fstream>
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <set>
 #include <string>
@@ -79,6 +81,8 @@ class HelloTriangleApplication {
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
 
+    std::vector<VkImageView> swapChainImageViews;
+
     void initWindow() {
         glfwInit();
 
@@ -105,6 +109,38 @@ class HelloTriangleApplication {
         std::cout << "created logical device" << std::endl;
         createSwapChain();
         std::cout << "created swapchain " << swapChain << std::endl;
+        createImageViews();
+        std::cout << "created image views" << std::endl;
+        createGraphicsPipeline();
+        std::cout << "created graphics pipeline" << std::endl;
+    }
+    void createGraphicsPipeline() {
+    }
+    void createImageViews() {
+        swapChainImageViews.resize(swapChainImages.size());
+        for (size_t i = 0; i < swapChainImages.size(); i++) {
+            VkImageViewCreateInfo createInfo{};
+            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            createInfo.image = swapChainImages[i];
+            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            createInfo.format = swapChainImageFormat;
+
+            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY; // allows you to swap color channels around
+            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+            // this is for info about the images purpouse and what part of the image should be used
+            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            createInfo.subresourceRange.baseMipLevel = 0;
+            createInfo.subresourceRange.levelCount = 1;
+            createInfo.subresourceRange.baseArrayLayer = 0;
+            createInfo.subresourceRange.layerCount = 1;
+            if (vkCreateImageView(logicalDevice, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create image views");
+            } // because we expictly created the image view we have to explicitly destroy them in cleanup unlike image which are creaated by
+              // the swapchain
+        }
     }
     void createSwapChain() {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
@@ -512,6 +548,9 @@ class HelloTriangleApplication {
     }
 
     void cleanup() {
+        for (auto imageView : swapChainImageViews) {
+            vkDestroyImageView(logicalDevice, imageView, nullptr);
+        }
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
