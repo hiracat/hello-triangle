@@ -883,6 +883,9 @@ class HelloTriangleApplication {
             glfwPollEvents();
             drawFrame();
         }
+        // because the operation for drawing the frame are asyncronous we need to wait for the to finish before cleaning up
+        
+        vkDeviceWaitIdle(logicalDevice);
     }
 
     void drawFrame() {
@@ -931,31 +934,37 @@ class HelloTriangleApplication {
     }
 
     void cleanup() {
+
         vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
         vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
         vkDestroyFence(logicalDevice, inFlightFence, nullptr);
 
         vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+
         for (auto framebuffer : swapChainFramebuffers) {
             vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
         }
 
-        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-
         vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
         for (auto imageView : swapChainImageViews) {
             vkDestroyImageView(logicalDevice, imageView, nullptr);
         }
+
+        vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
+        vkDestroyDevice(logicalDevice, nullptr);
+
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
-        vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
-        vkDestroyDevice(logicalDevice, nullptr);
+
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
+
         glfwDestroyWindow(window);
+
         glfwTerminate();
     }
 };
