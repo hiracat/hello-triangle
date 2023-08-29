@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 pushd shaders
 
 glslc -fshader-stage=vert -o vert.spv vertshader.glsl
