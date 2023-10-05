@@ -272,23 +272,6 @@ class HelloTriangleApplication {
         std::cout << "created sync objects" << std::endl;
     }
     void loadModel() {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
-
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
-            throw std::runtime_error(warn + err);
-        }
-        std::cout << "this is from the load model function and i just want to say hi because i can\n";
-        for (const auto &shape : shapes) {
-            for (const auto &index : shape.mesh.indices) {
-                Vertex vertex{};
-
-                vertices.push_back(vertex);
-                indices.push_back(indices.size());
-            }
-        }
     }
     void createDepthResources() {
         VkFormat depthFormat = findDepthFormat();
