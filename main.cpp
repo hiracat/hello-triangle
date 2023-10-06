@@ -3,33 +3,33 @@
 // because it is better to be specific since if we do something not with glm
 // everything breaks
 #define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
+#define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #define STB_IMAGE_IMPLEMENTATION // header guard
+#include <GLFW/glfw3.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
-#include <fstream>
-#include <limits>
-#include <math.h>
-#include <set>
-#include <stb/stb_image.h>
-#include <string>
-#include <vulkan/vulkan_core.h>
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <math.h>
 #include <optional>
+#include <set>
+#include <stb/stb_image.h>
 #include <stdexcept>
+#include <string>
+#include <tiny_obj_loader.h>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -272,6 +272,31 @@ class HelloTriangleApplication {
         std::cout << "created sync objects" << std::endl;
     }
     void loadModel() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn, err;
+
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+            throw std::runtime_error(warn + err);
+        }
+        for (const auto &shape : shapes) {
+            for (const auto &index : shape.mesh.indices) {
+                Vertex vertex{};
+                vertex.pos = {attrib.vertices[3 * index.vertex_index + 0], attrib.vertices[3 * index.vertex_index + 1],
+                              attrib.vertices[3 * index.vertex_index + 2]}; // the attrubues are an array of floats instead of something like a
+                                                                            // glm::vec3 so we have to manually interprite the verticies
+
+                vertex.texCoord = {attrib.texcoords[2 * index.texcoord_index + 0],
+                                   1.0f - attrib.texcoords[2 * index.texcoord_index +
+                                                           1]}; // the obj format assumes that the top of the image is 0 but vulkan it is the bottom
+
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                vertices.push_back(vertex);
+                indices.push_back(indices.size());
+            }
+        }
     }
     void createDepthResources() {
         VkFormat depthFormat = findDepthFormat();
@@ -603,8 +628,8 @@ class HelloTriangleApplication {
     void createDescriptorSetLayout() {
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         uboLayoutBinding.pImmutableSamplers = nullptr;
 
