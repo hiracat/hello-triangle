@@ -2,6 +2,7 @@
 // worry about allignment of structs in obos and stuff but will not use it
 // because it is better to be specific since if we do something not with glm
 // everything breaks
+#define GLM_ENABLE_EXPERIMENTAL
 #define TINYOBJLOADER_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
@@ -18,6 +19,7 @@
 #include <fstream>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/hash.hpp>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -28,6 +30,7 @@
 #include <stdexcept>
 #include <string>
 #include <tiny_obj_loader.h>
+#include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
@@ -59,6 +62,10 @@ struct Vertex {
 
         return bindingDescription;
     }
+
+    bool operator==(const Vertex &other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    }
     // because we have 2 attrubutes, position and color we have two attribute
     // descriptions
     static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
@@ -82,6 +89,14 @@ struct Vertex {
         return attributeDescriptions;
     }
 };
+
+namespace std {
+template <> struct hash<Vertex> {
+    size_t operator()(Vertex const &vertex) const {
+        return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
+    }
+};
+} // namespace std
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
                                       const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger) {
@@ -280,6 +295,9 @@ class HelloTriangleApplication {
         if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
             throw std::runtime_error(warn + err);
         }
+
+        std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
         for (const auto &shape : shapes) {
             for (const auto &index : shape.mesh.indices) {
                 Vertex vertex{};
@@ -293,11 +311,15 @@ class HelloTriangleApplication {
 
                 vertex.color = {1.0f, 1.0f, 1.0f};
 
-                vertices.push_back(vertex);
-                indices.push_back(indices.size());
+                if (uniqueVertices.count(vertex) == 0) {
+                    uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(uniqueVertices[vertex]);
             }
         }
     }
+
     void createDepthResources() {
         VkFormat depthFormat = findDepthFormat();
 
@@ -1640,8 +1662,9 @@ class HelloTriangleApplication {
         UniformBufferObject ubo{};
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f); // to make it the same aspect ration of the window
-        ubo.proj[1][1] *= -1; // glm was designed for opengl which has its y axis flipped so this fixes that
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f,
+                                    10.0f); // to make it the same aspect ration of the window
+        ubo.proj[1][1] *= -1;               // glm was designed for opengl which has its y axis flipped so this fixes that
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
