@@ -2,32 +2,34 @@
 // worry about allignment of structs in obos and stuff but will not use it
 // because it is better to be specific since if we do something not with glm
 // everything breaks
+#define TINYOBJLOADER_IMPLEMENTATION
+#define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLFW_INCLUDE_VULKAN
 #define STB_IMAGE_IMPLEMENTATION // header guard
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <GLFW/glfw3.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
-#include <fstream>
-#include <limits>
-#include <math.h>
-#include <set>
-#include <stb/stb_image.h>
-#include <string>
-#include <vulkan/vulkan_core.h>
-#include <GLFW/glfw3.h>
-#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <math.h>
 #include <optional>
+#include <set>
+#include <stb/stb_image.h>
 #include <stdexcept>
+#include <string>
+#include <tiny_obj_loader.h>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -42,6 +44,7 @@ struct UniformBufferObject {
     // the glm::mat4 is in the same format as the glsl matricies so we can just
     // use memcpy
 };
+
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
@@ -118,6 +121,9 @@ class HelloTriangleApplication {
     const uint32_t WIDTH = 800;
     const uint32_t HEIGHT = 600;
 
+    const std::string MODEL_PATH = "models/viking_room.obj";
+    const std::string TEXTURE_PATH = "textures/viking_room.png";
+
     void run() {
         initWindow();
         initVulkan();
@@ -162,6 +168,8 @@ class HelloTriangleApplication {
 
     VkCommandPool commandPool;
 
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
 
@@ -246,6 +254,8 @@ class HelloTriangleApplication {
         std::cout << "created image views\n";
         createTextureSampler();
         std::cout << "created texture sampler\n";
+        loadModel();
+        std::cout << "loaded model\n";
         createVertexBuffer();
         std::cout << "created vertex buffers" << std::endl;
         createIndexBuffer();
@@ -260,6 +270,33 @@ class HelloTriangleApplication {
         std::cout << "created command buffer" << std::endl;
         createSyncObjects();
         std::cout << "created sync objects" << std::endl;
+    }
+    void loadModel() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn, err;
+
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+            throw std::runtime_error(warn + err);
+        }
+        for (const auto &shape : shapes) {
+            for (const auto &index : shape.mesh.indices) {
+                Vertex vertex{};
+                vertex.pos = {attrib.vertices[3 * index.vertex_index + 0], attrib.vertices[3 * index.vertex_index + 1],
+                              attrib.vertices[3 * index.vertex_index + 2]}; // the attrubues are an array of floats instead of something like a
+                                                                            // glm::vec3 so we have to manually interprite the verticies
+
+                vertex.texCoord = {attrib.texcoords[2 * index.texcoord_index + 0],
+                                   1.0f - attrib.texcoords[2 * index.texcoord_index +
+                                                           1]}; // the obj format assumes that the top of the image is 0 but vulkan it is the bottom
+
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                vertices.push_back(vertex);
+                indices.push_back(indices.size());
+            }
+        }
     }
     void createDepthResources() {
         VkFormat depthFormat = findDepthFormat();
@@ -342,7 +379,7 @@ class HelloTriangleApplication {
 
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
-        stbi_uc *pixels = stbi_load("images/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc *pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -591,8 +628,8 @@ class HelloTriangleApplication {
     void createDescriptorSetLayout() {
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         uboLayoutBinding.pImmutableSamplers = nullptr;
 
@@ -739,15 +776,6 @@ class HelloTriangleApplication {
         }
     }
 
-    const std::vector<Vertex> vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},  {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
-
-        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},   {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}};
-
-    const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
-
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -791,7 +819,7 @@ class HelloTriangleApplication {
         VkBuffer vertexBuffers[] = {vertexBuffer};
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
@@ -1605,20 +1633,16 @@ class HelloTriangleApplication {
 
     void updateUniformBuffer(uint32_t currentImage) {
         static auto startTime = std::chrono::high_resolution_clock::now();
+
         auto currentTime = std::chrono::high_resolution_clock::now();
-        float deltaTime =
-            std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count(); // creates a clock and measures the time
-                                                                                                         // since the last frame
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(glm::radians(25.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
-        // the swapchain thing makes sure that the aspect ratio of the rendered
-        // scene is the same as the window
+        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+        ubo.proj[1][1] *= -1;
 
-        ubo.proj[1][1] *= -1; // glm was designed for opengl which has the y axis flipped so this
-                              // fixes that by inverting the scaling factor
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
 

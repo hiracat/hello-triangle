@@ -1,4 +1,4 @@
-CFLAGS = -std=c++17 -g -O0
+CFLAGS = -std=c++17
 LDFLAGS = -lglfw -lvulkan
 VulkanTest: main.cpp
 	g++ $(CFLAGS) -g -o VulkanTest main.cpp $(LDFLAGS)
@@ -13,3 +13,5 @@ test: VulkanTest
 
 clean:
 	rm -f VulkanTest
+release: main.cpp
+	g++ $(CFLAGS) -o release -O3 main.cpp $(LDFLAGS)
